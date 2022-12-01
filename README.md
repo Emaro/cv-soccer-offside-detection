@@ -10,7 +10,7 @@ pip install -r yolov5/requirements.txt
 '''
 
 ## How to RUN
-'''console
+```console
 cd yolov5
 python detect_coordinates.py 
-'''
+```
