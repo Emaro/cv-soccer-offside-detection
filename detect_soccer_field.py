@@ -236,13 +236,14 @@ def save(img, name):
 
 def detectSoccerField(path, saveImg=False):
     # Load image
-    img = Image.open(path).convert('L')
+    img = Image.open(path).convert('RGB')
 
     # Resize
     w, h = img.size
     scale = resizeWidth / w
     img = img.resize((int(w*scale), int(h*scale)), Image.BILINEAR)
-
+    colImg = img
+    img = img.convert("L")
     # Normalize and suppress dark regions
     igs = np.array(img) / 255.
     igs = np.maximum(igs, 0.5)
@@ -313,14 +314,15 @@ def detectSoccerField(path, saveImg=False):
 
     # Todo: find projection matrix
 
-    return (tl, tr, bl, br), scale
+    return colImg, (tl, tr, bl, br), scale
 
 
 def main():
     # use_open_cv()
 
-    corners, scale = detectSoccerField('static.png', True)
+    igs, corners, scale = detectSoccerField('static.png', True)
     (topLeft, topRight, bottomLeft, bottomRight) = corners
+    img, H = transformImage(igs, corners)
 
 
 def use_open_cv():
@@ -342,6 +344,107 @@ def use_open_cv():
         y2 = int(y0 - 1000*(a))
         cv.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
     cv.imwrite('houghlines3.jpg', img)
+
+def compute_h(p1, p2):
+    x, y = 0, 1
+    p = np.empty((len(p1)*2, 9))
+    
+    for r in range(len(p1)):        
+        p[2*r] = np.array([
+            [p2[r,x], p2[r,y], 1, 0, 0, 0, -p1[r,x]*p2[r,x], -p1[r,x]*p2[r,y], -p1[r,x]]
+        ])
+        p[2*r+1] = np.array([
+            [0, 0, 0, p2[r,x], p2[r,y], 1, -p1[r,y]*p2[r,x], -p1[r,y]*p2[r,y], -p1[r,y]]
+        ])
+    
+    # With help from https://math.stackexchange.com/a/3511513
+    _, _, Vt = np.linalg.svd(p)
+    H = Vt[-1].reshape(3, 3)
+    
+    return H
+
+def compute_h_norm(p1, p2):
+    H = compute_h(p1, p2)
+    return H
+
+def warp_image(igs_in, igs_ref, H):
+    # img in: (row, col) = (y, x) = (h, w)
+    in_h, in_w, d = igs_in.shape
+    ref_h, ref_w, _ = igs_ref.shape
+
+    # calculate outer bounderies
+    warped_edges = (H @ np.array([
+        [0, 0, 1],
+        [in_w,0,1],
+        [0,in_h,1],
+        [in_w,in_h,1]
+    ]).T)
+    warped_edges=warped_edges/warped_edges[-1]
+    
+    offset_x = -int(min(0, warped_edges[0].min()))
+    offset_y = -int(min(0, warped_edges[1].min()))
+    mrg_w = int(max(ref_w, warped_edges[0].max())) + offset_x
+    mrg_h = int(max(ref_h, warped_edges[1].max())) + offset_y
+    
+    # init images
+    igs_warp = np.zeros((ref_h, ref_w, d))
+    igs_merge = np.zeros((mrg_h, mrg_w,d))
+    
+    # warp into ref and merge result
+    for x in range(mrg_w):
+        for y in range(mrg_h):
+            r = np.linalg.inv(H) @ np.array([x-offset_x, y-offset_y, 1]).T
+            xx, yy, _ = r/r[-1]
+            i, j = int(xx), int(yy)
+            a, b = xx-i, yy-j
+            
+            if 0 <= i < in_w-1 and 0 <= j < in_h-1:
+                c = (1-a)*(1-b) * igs_in[j,i] \
+                    + a*(1-b) * igs_in[j,i+1] \
+                    + a*b * igs_in[j+1,i+1] \
+                    + (1-a)*b * igs_in[j+1,i]
+                    
+                igs_merge[y, x] = c
+                
+                if 0 <= x-offset_x < ref_w and 0 <= y-offset_y < ref_h:
+                    igs_warp[y-offset_y, x-offset_x] = c
+    
+    # merge
+    igs_merge[offset_y:ref_h+offset_y,offset_x:ref_w+offset_x] = igs_ref[:]
+        
+    return igs_warp, igs_merge
+
+def rectify(igs, p1, p2):
+    H = compute_h_norm(p1, p2)
+    igs_rec,_ = warp_image(igs, np.zeros((280,140,3)), H)
+    return igs_rec, H
+
+
+
+def get_rot(s, a, tx, ty):
+    return np.array([
+        [s*np.cos(a), s*np.sin(a), tx],
+        [-s*np.sin(a), s*np.cos(a), ty],
+        [0, 0, 1]
+    ])
+
+def transformImage(igs, corners):
+   
+    # lists of the corresponding points (x,y)
+    # shape of p_in, p_ref: [N, 2]
+    c_in = np.array([
+        [25, 25],
+        [1025,25],
+        [25, 525],
+        [1025,525]
+    ])
+    c_ref = np.array(corners)
+    print(c_in.shape, c_ref.shape)
+    igs_rec, H = rectify(np.array(igs), c_in, c_ref)
+
+    save(igs_rec, "05-warped")
+    
+    return igs_rec, H
 
 
 if __name__ == '__main__':
