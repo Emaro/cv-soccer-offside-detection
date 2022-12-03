@@ -1,12 +1,15 @@
 import cv2
 import os
 import numpy as np
+from detect_player import player_pos
+from detect_ball import ball_pos
 
 ###
 ### PARAMETERS
 ###
 
 video_path = "./data/video.mp4";    # File to read
+frame = np.array([])
 
 num_player = 20;                    # Number of players to track, default: 20
 
@@ -25,11 +28,17 @@ line_compute_freq = 10;             # Do line tracking every ~ frames
 def get_pos_ball(frame):
 
     pos = np.zeros(2);
+    
+    pos = ball_pos
+
     return pos;
 
 def get_pos_player(frame):
 
     pos = np.zeros((num_player, 3));
+
+    pos = player_pos
+
     return pos;
 
 def get_lines(frame):
