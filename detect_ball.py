@@ -8,7 +8,7 @@ from main import frame
 model = torch.hub.load('ultralytics/yolov5', 'custom', path='best_ball.pt', force_reload=True)
 
 #img = cv2.imread('soccer_0.jpg')
-img = Image.fromarray(frame) #Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+img = Image.fromarray(main.frame) #Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
 results = model(img)  # includes NMS
 

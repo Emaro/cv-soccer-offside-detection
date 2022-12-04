@@ -29,7 +29,7 @@ def get_pos_ball(frame):
 
     pos = np.zeros(2);
     
-    pos = ball_pos
+    pos = detect_ball.ball_pos
 
     return pos;
 
@@ -37,7 +37,8 @@ def get_pos_player(frame):
 
     pos = np.zeros((num_player, 3));
 
-    pos = player_pos
+    for ii in range(num_player):
+      pos[ii,:] = detect_player.player_pos[ii,:]
 
     return pos;
 
