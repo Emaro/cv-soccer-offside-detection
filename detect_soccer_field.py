@@ -51,7 +51,7 @@ def EdgeDetection(Igs, sigma):
 
     Ims /= Ims.max()
 
-    return Ims, Io, Ix, Iy
+    return Ims
 
 
 def HoughTransform(Im, threshold, rhoRes, thetaRes):
@@ -165,7 +165,7 @@ def detectSoccerField(path, saveImg=False):
         save(igs, "01-grayscale")
 
     print("Detect edges...")
-    Im, Io, Ix, Iy = EdgeDetection(igs, sigma)
+    Im = EdgeDetection(igs, sigma)
     if saveImg:
         save(Im, "02-edges")
 
