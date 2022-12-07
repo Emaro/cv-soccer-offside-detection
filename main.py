@@ -1,24 +1,25 @@
 import cv2
 import os
 import numpy as np
-from detect_player import player_pos
+from detect_player import PlayerModel
 from detect_ball import ball_pos
 
 ###
 ### PARAMETERS
 ###
 
-video_path = "./data/video.mp4";    # File to read
-frame = np.array([])
+video_path              = "./data/video.mp4";   # File to read
+yolo_path               = "ultralytics/yolov5";
+player_model            = "best_player.pt";
 
-num_player = 20;                    # Number of players to track, default: 20
+num_player              = 20;                   # Number of players to track, default: 20
 
-dist_max_player = 1E+10;            # Max displacement of player between frames
-dist_max_ball   = 1E+1;             # Max distance between player and the ball (possession)
-acceleration_threshold = 1E+1;      # Threshold to detect interference
-dist_vanishing_lazy = 1E+5;         # Do lazy calculation of distances if vanishing point is too far
+dist_max_player         = 1E+10;                # Max displacement of player between frames
+dist_max_ball           = 1E+1;                 # Max distance between player and the ball (possession)
+acceleration_threshold  = 1E+1;                 # Threshold to detect interference
+dist_vanishing_lazy     = 1E+5;                 # Do lazy calculation of distances if vanishing point is too far
 
-line_compute_freq = 10;             # Do line tracking every ~ frames
+line_compute_freq       = 10;                   # Do line tracking every ~ frames
 
 ###
 ### GET TRACKED COORDINATES
@@ -30,15 +31,6 @@ def get_pos_ball(frame):
     pos = np.zeros(2);
     
     pos = detect_ball.ball_pos
-
-    return pos;
-
-def get_pos_player(frame):
-
-    pos = np.zeros((num_player, 3));
-
-    for ii in range(num_player):
-      pos[ii,:] = detect_player.player_pos[ii,:]
 
     return pos;
 
@@ -56,14 +48,6 @@ def get_vanishing_point(rho_list, theta_list):
 
     point = np.zeros(2);
     return point;
-
-# get left, right end of horizontal lines here
-# if there are two horizontal lines, choose one at the top
-def get_left_right(rho_list, theta_list):
-
-    left = np.zeros(2);
-    right = np.zeros(2);
-    return left, right;
 
 ###
 ### BALL CLASS
@@ -94,8 +78,11 @@ class Ball:
 
 class Players:
     def __init__(self, frame):
+        # initialize player yolo
+        self.model = PlayerModel(yolo_path, player_model);
+
         # set player positions
-        self.pos = get_pos_player(frame);
+        self.pos = self.model.track_player_yolo(frame);
 
         # fill pos if less than num_players detected.
         # count players and assign team with less players
@@ -132,7 +119,7 @@ class Players:
     # Assumes pos has num_player(20) rows
     # Chooses nearest point
     def update_players(self, frame):
-        tracked = get_pos_player(frame);
+        tracked = self.model.track_player_yolo(frame);
 
         for i in range(num_player):
             dist_min = dist_max_player;
