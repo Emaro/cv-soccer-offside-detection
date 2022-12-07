@@ -39,15 +39,6 @@ def EdgeDetection(Igs, sigma):
 
     # Why do I have to switch?
     Ix, Iy = sobely, sobelx
-
-
-    print("Magnitude and orientation...")
-    Im = np.zeros((h, w))
-    Io = np.zeros((h, w))
-    for i in range(h):
-        for j in range(w):
-            Im[i, j] = math.sqrt(Ix[i, j]**2 + Iy[i, j]**2)
-            Io[i, j] = np.arctan2(Ix[i, j], Iy[i, j]) - math.pi / 2
     
     print("Laplacian...")
     Ims = cv.Laplacian(Igs, cv.CV_64F, ksize=1)
