@@ -1,8 +1,5 @@
-import cv2
 import torch
 import numpy as np
-import pandas as pd
-from PIL import Image
 
 class PlayerModel:
 	def __init__(self, yolo_path, model_path):

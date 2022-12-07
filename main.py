@@ -17,7 +17,6 @@ num_player              = 20;                   # Number of players to track, de
 dist_max_player         = 1E+10;                # Max displacement of player between frames
 dist_max_ball           = 1E+1;                 # Max distance between player and the ball (possession)
 acceleration_threshold  = 1E+1;                 # Threshold to detect interference
-dist_vanishing_lazy     = 1E+5;                 # Do lazy calculation of distances if vanishing point is too far
 
 line_compute_freq       = 10;                   # Do line tracking every ~ frames
 
@@ -106,7 +105,7 @@ class Players:
         self.update_line(frame);
 
         # set dist from goal
-        self.dist = np.zeros((num_player, 2));
+        self.dist = np.zeros(num_player);
         self.update_dist();
 
         # distance, player snapshot for detection
@@ -138,21 +137,12 @@ class Players:
     def update_line(self, frame):
         rho_list, theta_list = get_lines(frame);
         self.vpo = get_vanishing_point(rho_list, theta_list);
-        self.left, self.right = get_left_right(rho_list, theta_list);
 
     # Transform player coordinates to relevant distances
     def update_dist(self):
-
-        #####################################
-        ##################################### TODO
-        #####################################
-
-        # if vanishing point is too far away just draw parallel lines
-        if (np.linalg.norm(self.vpo) > dist_vanishing_lazy) :
-            None
-
-        else :
-            None
+        
+        for i in range(num_player):
+            self.dist[i] = self.pos[0] - (self.vpo[0] - self.pos[0]) * self.pos[1] / (self.vpo[1] - self.pos[1]);
 
         return;
 
