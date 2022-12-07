@@ -8,11 +8,11 @@ from PIL import Image, ImageDraw
 from sympy import Line, Point
 
 sigma = 2.6
-threshold = 0.2
+threshold = 1.5
 rhoRes = 2
 thetaRes = math.pi/180
 nLines = 18
-resizeWidth = 960
+resizeWidth = 840
 
 
 def SuppressNonMax(img, i, j, ang):
@@ -29,30 +29,14 @@ def SuppressNonMax(img, i, j, ang):
     else:
         return img[i, j]
 
+def timeSince(s):
+    return round((time.time() - s) * 1000) / 1000
 
 def EdgeDetection(Igs, sigma):
-    h, w = len(Igs), len(Igs[0])
-
-    print("Sobel...")
-    sobelx = cv.Sobel(Igs, cv.CV_64F, 1, 0, ksize=3)
-    sobely = cv.Sobel(Igs, cv.CV_64F, 0, 1, ksize=3)
-
-    # Why do I have to switch?
-    Ix, Iy = sobely, sobelx
-    
-    print("Laplacian...")
-    Ims = cv.Laplacian(Igs, cv.CV_64F, ksize=1)
-
-    print("Non-max suppression...")
-    Ims = np.zeros((h, w))
-    for i in range(h):
-        for j in range(w):
-            Ims[i, j] = SuppressNonMax(Im, i, j, Io[i, j])
-
-    Ims /= Ims.max()
-
+    s = time.time()
+    Ims = cv.Canny(np.uint8(Igs*255), 100, 200, apertureSize=3) / 255.
+    print("Canny took", timeSince(s))
     return Ims
-
 
 def HoughTransform(Im, threshold, rhoRes, thetaRes):
     rhoMax = int(math.sqrt(len(Im)**2 + len(Im[0])**2))
@@ -165,29 +149,57 @@ def detectSoccerField(path, saveImg=False):
         save(igs, "01-grayscale")
 
     print("Detect edges...")
+    s = time.time()
     Im = EdgeDetection(igs, sigma)
     if saveImg:
         save(Im, "02-edges")
+    print("Edges took", round((time.time() - s) * 1000) / 1000)
 
+    s = time.time()
+    lines = cv.HoughLines(np.uint8(Im*255),rhoRes,thetaRes,int(threshold*255))
+    print("CV hough lines took", timeSince(s))
+    
     print("Hough transform...")
+    '''
     s = time.time()
     H = HoughTransform(Im, threshold, rhoRes, thetaRes)
-    print("Took ", time.time() - s)
     if saveImg:
         save(H, "03-hough-transform-map")
 
     print("Hough lines...")
     lRho, lTheta = HoughLines(H, rhoRes, thetaRes, nLines)
     print(len(lRho), " lines found.")
+    print("Hough lines took ", time.time() - s)
+    '''
 
+    
     draw = ImageDraw.Draw(img)
 
     # Todo: only compare with promising candidates
     # (ie rule out lines with same orientation or in the middle of the field)
     print("Find intersections...")
+    
+    
     myCorners = []
+    
+    for line in lines:
+        rho, theta = line[0]
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a*rho
+        y0 = b*rho
+        x1 = int(x0 + 1000*(-b))
+        y1 = int(y0 + 1000*(a))
+        x2 = int(x0 - 1000*(-b))
+        y2 = int(y0 - 1000*(a))
+        # x1,y1,x2,y2 = line[0]
+        draw.line(((x1,y1),(x2,y2)),fill="white")
+            
+    lRho = []
+    lTheta = []
     for k in range(len(lRho)):
         r, t = lRho[k], lTheta[k]
+            
         mag, rot = r, t - math.pi/2
 
         drawLine(draw, r, t - math.pi/2, "black")
@@ -217,10 +229,10 @@ def detectSoccerField(path, saveImg=False):
             br = (x, y)
 
     # Draw rectangle
-    draw.line([tr, tl], fill="white")
-    draw.line([tl, bl], fill="white")
-    draw.line([bl, br], fill="white")
-    draw.line([br, tr], fill="white")
+    # draw.line([tr, tl], fill="white")
+    # draw.line([tl, bl], fill="white")
+    # draw.line([bl, br], fill="white")
+    # draw.line([br, tr], fill="white")
 
     if saveImg:
         Image.fromarray(np.uint8(img)).save(f'04-img-with-hough-lines.png')
