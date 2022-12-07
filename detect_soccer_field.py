@@ -7,84 +7,13 @@ import numpy as np
 from PIL import Image, ImageDraw
 from sympy import Line, Point
 
-sigma = 1.6
+sigma = 2.6
 threshold = 0.2
 rhoRes = 2
 thetaRes = math.pi/180
 nLines = 18
-resizeWidth = 840
-
-
-def BorderExtendPad(Igs, k):
-    outImg = np.zeros((len(Igs) + 2*k, len(Igs[0]) + 2*k))
-
-    outImg[k:-k, k:-k] = Igs
-
-    for i in range(k):
-        for j in range(k):
-            outImg[i][j] = Igs[0][0]
-            outImg[-i-1][j] = Igs[-1][0]
-            outImg[i][-j-1] = Igs[0][-1]
-            outImg[-i-1][-j-1] = Igs[-1][-1]
-
-        for j in range(len(Igs)):
-            outImg[k+j][i] = Igs[j][0]
-            outImg[k+j][-i-1] = Igs[j][-1]
-
-        for j in range(len(Igs[0])):
-            outImg[i][k+j] = Igs[0][j]
-            outImg[-i-1][k+j] = Igs[-1][j]
-
-    return outImg
-
-
-def GaussianKernel(k, sigma):
-    kernel = np.zeros((2*k + 1, 2*k + 1))
-    sigSqeDbl = (sigma**2) * 2
-
-    def g(i, j):
-        return math.exp(- (i*i + j*j) / sigSqeDbl
-                        ) / (sigSqeDbl * math.pi)
-
-    for i in range(-k, k+1):
-        for j in range(-k, k+1):
-            kernel[i+k, j+k] = g(i, j)
-
-    return kernel
-
-
-def ConvFilter(Igs, G):
-    k = (len(G) - 1) // 2
-    IgsPad = BorderExtendPad(Igs, k)
-    Iconv = np.zeros((len(Igs), len(Igs[0])))
-    krn_rng = range(-k, k+1)
-
-    for i in range(len(Igs)):
-        for j in range(len(Igs[0])):
-            Iconv[i, j] = sum([
-                G[m+k, n+k] * IgsPad[i - (m-k), j - (n-k)]
-                for m in krn_rng
-                for n in krn_rng
-            ])
-
-    return Iconv
-
-
-def SobelKernel(d="h"):
-    if d == "h":
-        return np.array([
-            [1, 2, 1],
-            [0, 0, 0],
-            [-1, -2, -1]
-        ])
-    elif d == "v":
-        return np.array([
-            [-1, 0, 1],
-            [-2, 0, 2],
-            [-1, 0, 1]
-        ])
-    else:
-        raise "Invalid argument!"
+resizeWidth = 960
+kernelSize = 1
 
 
 def SuppressNonMax(img, i, j, ang):
@@ -105,39 +34,36 @@ def SuppressNonMax(img, i, j, ang):
 def EdgeDetection(Igs, sigma):
     h, w = len(Igs), len(Igs[0])
     
-    # Todo: fast gaussian / blur
-    print("  Gaussian...")
-    imgSmooth = ConvFilter(Igs, GaussianKernel(2, sigma))
+    print("Gaussian blur...")
+    Igs = cv.GaussianBlur(Igs, (kernelSize, kernelSize), sigma)
 
-    # print("  Sobel...")
-    # Ix = ConvFilter(imgSmooth, SobelKernel("h"))
-    # Iy = ConvFilter(imgSmooth, SobelKernel("v"))
-
-    print("  Sobel with cv...")
-    s = time.time()
+    print("Sobel...")
     sobelx = cv.Sobel(Igs, cv.CV_64F, 1, 0, ksize=3)
     sobely = cv.Sobel(Igs, cv.CV_64F, 0, 1, ksize=3)
-    print("  Took", time.time() - s)
 
     # Why do I have to switch?
     Ix, Iy = sobely, sobelx
 
-    Io = np.zeros((h, w))
-    Im = np.zeros((h, w))
-    Ims = np.zeros((h, w))
 
-    print("  Magnitude and direction...")
+    print("Magnitude and orientation...")
+    Im = np.zeros((h, w))
+    Io = np.zeros((h, w))
     for i in range(h):
         for j in range(w):
             Im[i, j] = math.sqrt(Ix[i, j]**2 + Iy[i, j]**2)
             Io[i, j] = np.arctan2(Ix[i, j], Iy[i, j]) - math.pi / 2
+    
+    print("Laplacian...")
+    Ims = cv.Laplacian(Igs, cv.CV_64F, ksize=1)
 
-    print("  Non-max suppression...")
+    print("Non-max suppression...")
+    Ims = np.zeros((h, w))
     for i in range(h):
         for j in range(w):
             Ims[i, j] = SuppressNonMax(Im, i, j, Io[i, j])
 
     Ims /= Ims.max()
+
     return Ims, Io, Ix, Iy
 
 
