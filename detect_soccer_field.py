@@ -13,7 +13,6 @@ rhoRes = 2
 thetaRes = math.pi/180
 nLines = 18
 resizeWidth = 960
-kernelSize = 1
 
 
 def SuppressNonMax(img, i, j, ang):
@@ -33,9 +32,6 @@ def SuppressNonMax(img, i, j, ang):
 
 def EdgeDetection(Igs, sigma):
     h, w = len(Igs), len(Igs[0])
-    
-    print("Gaussian blur...")
-    Igs = cv.GaussianBlur(Igs, (kernelSize, kernelSize), sigma)
 
     print("Sobel...")
     sobelx = cv.Sobel(Igs, cv.CV_64F, 1, 0, ksize=3)
