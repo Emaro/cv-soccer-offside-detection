@@ -199,16 +199,29 @@ def detectSoccerField(path, saveImg=False):
     bl = (-1, -1)
     br = (-1, -1)
 
+    def closerToCenter(first, second):
+        x1, y1 = first
+        x2, y2 = second
+        
+        mx, my = resizeWidth/2, h*resizeWidth/w/2
+        d1 = (mx - x1)**2 + (my - y1)**2
+        d2 = (mx - x2)**2 + (my - y2)**2
+        
+        # It should not be in the middle
+        middle = (mx - resizeWidth/2)**2 + (my - h*resizeWidth/w)**2
+        if (d2 < middle): return first
+        return first if d1 < d2 else second
+            
     for i in range(len(myCorners)):
         x, y = myCorners[i]
         if 0 < x < resizeWidth/2 and 0 < y < h*resizeWidth/w/2:
-            tl = (x, y)
+            tl = closerToCenter(tl, (x, y))
         elif resizeWidth/2 < x < resizeWidth and 0 < y < h*resizeWidth/w/2:
-            tr = (x, y)
+            tr = closerToCenter(tr, (x, y))
         elif 0 < x < resizeWidth/2 and h*resizeWidth/w/2 < y < h*resizeWidth/w:
-            bl = (x, y)
+            bl = closerToCenter(bl, (x, y))
         elif resizeWidth/2 < x < resizeWidth and h*resizeWidth/w/2 < y < h*resizeWidth/w:
-            br = (x, y)
+            br = closerToCenter(br, (x, y))
 
     print("Finding corners took", timeSince(s))
     # Draw rectangle
