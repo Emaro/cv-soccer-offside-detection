@@ -15,20 +15,6 @@ nLines = 18
 resizeWidth = 840
 
 
-def SuppressNonMax(img, i, j, ang):
-    dx, dy = round(math.cos(ang)), round(math.sin(ang))
-
-    if (0 <= i+dx < len(img)
-        and 0 <= j+dy < len(img[0])
-            and img[i+dx, j+dy] > img[i, j]):
-        return 0
-    if (0 <= i-dx < len(img)
-        and 0 <= j-dy < len(img[0])
-            and img[i-dx, j-dy] > img[i, j]):
-        return 0
-    else:
-        return img[i, j]
-
 def timeSince(s):
     return round((time.time() - s) * 1000) / 1000
 
@@ -37,30 +23,6 @@ def EdgeDetection(Igs, sigma):
     Ims = cv.Canny(np.uint8(Igs*255), 100, 200, apertureSize=3) / 255.
     print("Canny took", timeSince(s))
     return Ims
-
-def HoughTransform(Im, threshold, rhoRes, thetaRes):
-    rhoMax = int(math.sqrt(len(Im)**2 + len(Im[0])**2))
-    rhoLen = int(rhoMax / rhoRes)
-    thetaMax = 2*math.pi
-    thetaLen = int(thetaMax / thetaRes)
-
-    H = np.zeros((rhoLen, thetaLen))
-
-    for i in range(0, len(Im)):
-        for j in range(0, len(Im[0])):
-            Im[i, j] = 1 if Im[i, j] >= threshold else 0
-
-    for i in range(0, len(Im)):
-        for j in range(0, len(Im[0])):
-            if Im[i, j] > 0:
-                for t in range(0, thetaLen):
-                    rho = int(i * np.cos(t*thetaRes) + j *
-                              np.sin(t*thetaRes)) // rhoRes
-                    H[rho, t] += 1
-
-    H = H / H.max()
-
-    return H
 
 
 def HoughNonmax(img, i, j):
@@ -93,16 +55,6 @@ def HoughLines(H, rhoRes, thetaRes, nLines, no=0):
     return lRho, lTheta
 
 
-def getLine(r, t):
-    mag, rot = r, t - math.pi/2
-    p1 = Point(+mag*math.cos(rot) - 1000*math.sin(rot),
-               -mag*math.sin(rot) - 1000*math.cos(rot))
-    p2 = Point(+mag*math.cos(rot) + 1000*math.sin(rot),
-               -mag*math.sin(rot) + 1000*math.cos(rot))
-    ln = Line(p1, p2)
-    return ln
-
-
 def findIntersections(line, k, lines):
     found = []
     
@@ -122,19 +74,6 @@ def findIntersections(line, k, lines):
                 found.append(c.coordinates)
 
     return found
-
-
-def drawLine(draw, mag, rot, color="yellow"):
-    draw.line((
-        +mag*math.cos(rot),
-        -mag*math.sin(rot),
-        +mag*math.cos(rot) - 1000*math.sin(rot),
-        -mag*math.sin(rot) - 1000*math.cos(rot)), fill=color)
-    draw.line((
-        +mag*math.cos(rot),
-        -mag*math.sin(rot),
-        +mag*math.cos(rot) + 1000*math.sin(rot),
-        -mag*math.sin(rot) + 1000*math.cos(rot)), fill=color)
 
 
 def save(img, name):
@@ -264,10 +203,6 @@ def compute_h(p1, p2):
     
     return H
 
-def compute_h_norm(p1, p2):
-    H = compute_h(p1, p2)
-    return H
-
 def warp_image(igs_in, igs_ref, H):
     # img in: (row, col) = (y, x) = (h, w)
     in_h, in_w, d = igs_in.shape
@@ -318,7 +253,7 @@ def warp_image(igs_in, igs_ref, H):
     return igs_warp, igs_merge
 
 def rectify(igs, p1, p2):
-    H = compute_h_norm(p1, p2)
+    H = compute_h(p1, p2)
     igs_rec,_ = warp_image(igs, np.zeros((550,1050,3)), H)
     return igs_rec, H
 
