@@ -64,14 +64,12 @@ def detect_field(path, saveImg=False):
     if saveImg:
         save(igs, "01-grayscale")
 
-    print("Detect edges...")
     s = time.time()
     Im = cv.Canny(np.uint8(igs*255), 100, 200, apertureSize=3) / 255.
     if saveImg:
         save(Im, "02-edges")
     print("Edges took", time_since(s))
 
-    print("Hough transform...")
     s = time.time()
     lines = cv.HoughLines(np.uint8(Im*255), rhoRes, thetaRes, int(threshold*255))
     print("CV hough lines took", time_since(s))
@@ -80,7 +78,6 @@ def detect_field(path, saveImg=False):
 
     # Todo: only compare with promising candidates
     # (ie rule out lines with same orientation or in the middle of the field)
-    print("Find intersections...")
     s = time.time()
     myCorners = []
     for i in range(len(lines)):
@@ -164,11 +161,8 @@ def compute_h(p1, p2):
 
 
 def warp_image(igs_in, igs_ref, H):
-    # img in: (row, col) = (y, x) = (h, w)
     in_h, in_w, d = igs_in.shape
     ref_h, ref_w, _ = igs_ref.shape
-
-    print("Dimensions", in_h, in_w, ref_h, ref_w)
 
     # calculate outer bounderies
     warped_edges = (H @ np.array([
@@ -186,9 +180,9 @@ def warp_image(igs_in, igs_ref, H):
 
     # init images
     igs_warp = np.zeros((ref_h, ref_w, d))
-    igs_merge = np.zeros((mrg_h, mrg_w, d))
 
     # warp into ref and merge result
+    s = time.time()
     for x in range(mrg_w):
         for y in range(mrg_h):
             r = np.linalg.inv(H) @ np.array([x-offset_x, y-offset_y, 1]).T
@@ -202,20 +196,19 @@ def warp_image(igs_in, igs_ref, H):
                     + a*b * igs_in[j+1, i+1] \
                     + (1-a)*b * igs_in[j+1, i]
 
-                igs_merge[y, x] = c
-
                 if 0 <= x-offset_x < ref_w and 0 <= y-offset_y < ref_h:
                     igs_warp[y-offset_y, x-offset_x] = c
 
-    # merge
-    igs_merge[offset_y:ref_h+offset_y, offset_x:ref_w+offset_x] = igs_ref[:]
+    print("Warping took", time_since(s))
 
-    return igs_warp, igs_merge
+    return igs_warp
 
 
 def rectify(igs, p1, p2):
+    s = time.time()
     H = compute_h(p1, p2)
-    igs_rec, _ = warp_image(igs, np.zeros((550, 1050, 3)), H)
+    print("Computing H took", time_since(s))
+    igs_rec = warp_image(igs, np.zeros((550, 1050, 3)), H)
     return igs_rec, H
 
 
@@ -236,8 +229,12 @@ def transform_image(igs, corners):
 
 
 def main():
+    s = time.time()
     igs, corners, scale = detect_field('static.png', True)
+    print("Total time to find corners", time_since(s))
+    s = time.time()
     img, H = transform_image(igs, corners)
+    print("Total time to transform image", time_since(s))
 
 
 if __name__ == '__main__':
