@@ -149,7 +149,8 @@ def detectSoccerField(path, saveImg=False):
     w, h = img.size
     scale = resizeWidth / w
     img = img.resize((int(w*scale), int(h*scale)), Image.BILINEAR)
-    colImg = img
+    colImg = np.array(img)
+
     img = img.convert("L")
     # Normalize and suppress dark regions
     igs = np.array(img) / 255.
@@ -232,26 +233,6 @@ def main():
     img, H = transformImage(igs, corners)
 
 
-def use_open_cv():
-    img = cv.imread("static.png", cv.IMREAD_COLOR)
-    img = cv.blur(img, (11, 11))
-
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    edges = cv.Canny(gray, 50, 150, apertureSize=3)
-    lines = cv.HoughLines(edges, 1, np.pi/180, 200)
-    for line in lines:
-        rho, theta = line[0]
-        a = np.cos(theta)
-        b = np.sin(theta)
-        x0 = a*rho
-        y0 = b*rho
-        x1 = int(x0 + 1000*(-b))
-        y1 = int(y0 + 1000*(a))
-        x2 = int(x0 - 1000*(-b))
-        y2 = int(y0 - 1000*(a))
-        cv.line(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
-    cv.imwrite('houghlines3.jpg', img)
-
 def compute_h(p1, p2):
     x, y = 0, 1
     p = np.empty((len(p1)*2, 9))
@@ -278,6 +259,8 @@ def warp_image(igs_in, igs_ref, H):
     # img in: (row, col) = (y, x) = (h, w)
     in_h, in_w, d = igs_in.shape
     ref_h, ref_w, _ = igs_ref.shape
+    
+    print("Dimensions", in_h, in_w, ref_h, ref_w)
 
     # calculate outer bounderies
     warped_edges = (H @ np.array([
@@ -323,17 +306,9 @@ def warp_image(igs_in, igs_ref, H):
 
 def rectify(igs, p1, p2):
     H = compute_h_norm(p1, p2)
-    igs_rec,_ = warp_image(igs, np.zeros((280,140,3)), H)
+    igs_rec,_ = warp_image(igs, np.zeros((550,1050,3)), H)
     return igs_rec, H
 
-
-
-def get_rot(s, a, tx, ty):
-    return np.array([
-        [s*np.cos(a), s*np.sin(a), tx],
-        [-s*np.sin(a), s*np.cos(a), ty],
-        [0, 0, 1]
-    ])
 
 def transformImage(igs, corners):
    
@@ -345,11 +320,11 @@ def transformImage(igs, corners):
         [25, 525],
         [1025,525]
     ])
-    c_ref = np.array(corners)
-    print(c_in.shape, c_ref.shape)
+    c_ref = np.int32(np.array(corners))
+    print(c_in, c_ref)
     igs_rec, H = rectify(np.array(igs), c_in, c_ref)
 
-    save(igs_rec, "05-warped")
+    Image.fromarray(np.uint8(igs_rec)).save(f'05-warped.png')
     
     return igs_rec, H
 
