@@ -103,11 +103,21 @@ def getLine(r, t):
     return ln
 
 
-def findIntersections(line, k, rho, theta):
+def findIntersections(line, k, lines):
     found = []
-    for i in range(len(rho)):
+    
+    for i in range(len(lines)):
         if i != k:
-            corners = getLine(rho[i], theta[i]).intersection(line)
+            rho, theta = lines[i][0]
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a*rho
+            y0 = b*rho
+            x1 = int(x0 + 1000*(-b))
+            y1 = int(y0 + 1000*(a))
+            x2 = int(x0 - 1000*(-b))
+            y2 = int(y0 - 1000*(a))
+            corners = Line(Point(x1,y1), Point(x2,y2)).intersection(line)
             for c in corners:
                 found.append(c.coordinates)
 
@@ -155,35 +165,21 @@ def detectSoccerField(path, saveImg=False):
         save(Im, "02-edges")
     print("Edges took", round((time.time() - s) * 1000) / 1000)
 
+    print("Hough transform...")
     s = time.time()
     lines = cv.HoughLines(np.uint8(Im*255),rhoRes,thetaRes,int(threshold*255))
     print("CV hough lines took", timeSince(s))
     
-    print("Hough transform...")
-    '''
-    s = time.time()
-    H = HoughTransform(Im, threshold, rhoRes, thetaRes)
-    if saveImg:
-        save(H, "03-hough-transform-map")
-
-    print("Hough lines...")
-    lRho, lTheta = HoughLines(H, rhoRes, thetaRes, nLines)
-    print(len(lRho), " lines found.")
-    print("Hough lines took ", time.time() - s)
-    '''
-
-    
+        
     draw = ImageDraw.Draw(img)
 
     # Todo: only compare with promising candidates
     # (ie rule out lines with same orientation or in the middle of the field)
     print("Find intersections...")
-    
-    
+    s = time.time()
     myCorners = []
-    
-    for line in lines:
-        rho, theta = line[0]
+    for i in range(len(lines)):
+        rho, theta = lines[i][0]
         a = np.cos(theta)
         b = np.sin(theta)
         x0 = a*rho
@@ -194,24 +190,9 @@ def detectSoccerField(path, saveImg=False):
         y2 = int(y0 - 1000*(a))
         # x1,y1,x2,y2 = line[0]
         draw.line(((x1,y1),(x2,y2)),fill="white")
-            
-    lRho = []
-    lTheta = []
-    for k in range(len(lRho)):
-        r, t = lRho[k], lTheta[k]
-            
-        mag, rot = r, t - math.pi/2
-
-        drawLine(draw, r, t - math.pi/2, "black")
-
-        p1 = Point(+mag*math.cos(rot) - 1000*math.sin(rot), -mag *
-                   math.sin(rot) - 1000*math.cos(rot), evaluate=False)
-        p2 = Point(+mag*math.cos(rot) + 1000*math.sin(rot), -mag *
-                   math.sin(rot) + 1000*math.cos(rot), evaluate=False)
-        ln = Line(p1, p2)
-
-        myCorners = myCorners + findIntersections(ln, k, lRho, lTheta)
-
+        myCorners = myCorners + findIntersections(
+            Line(Point(x1,y1), Point(x2,y2)), i, lines)
+    
     tl = (-1, -1)
     tr = (-1, -1)
     bl = (-1, -1)
@@ -228,11 +209,12 @@ def detectSoccerField(path, saveImg=False):
         elif resizeWidth/2 < x < resizeWidth and h*resizeWidth/w/2 < y < h*resizeWidth/w:
             br = (x, y)
 
+    print("Finding corners took", timeSince(s))
     # Draw rectangle
-    # draw.line([tr, tl], fill="white")
-    # draw.line([tl, bl], fill="white")
-    # draw.line([bl, br], fill="white")
-    # draw.line([br, tr], fill="white")
+    draw.line([tr, tl], fill="black")
+    draw.line([tl, bl], fill="black")
+    draw.line([bl, br], fill="black")
+    draw.line([br, tr], fill="black")
 
     if saveImg:
         Image.fromarray(np.uint8(img)).save(f'04-img-with-hough-lines.png')
