@@ -312,7 +312,7 @@ def get_lines_sideview(frame, maxLineCount = 12):
         thresh += 30
         lines = cv.HoughLines(edges, rho_res, theta_res, thresh)
 
-    return [l for l in lines if abs(l[0][1]) < math.pi / 3]
+    return [l for l in lines if abs(l[0][1]) < math.pi / 3], edges
 
 def main():
     vid_file = cv.VideoCapture('vid.mp4')
@@ -321,15 +321,7 @@ def main():
     while r:
         no += 1
         s = time.time()
-        gauss = np.maximum(np.array(frame), 140)
-        gauss = cv.GaussianBlur(gauss, (3,3), 1.2)
-        edges = cv.Canny(gauss, 180, 120, apertureSize=5)
-        # edges = cv.GaussianBlur(edges, (3, 3), 0)
-        lines = None
-        thresh = 220
-        while lines is None or len([l for l in lines if abs(l[0][1]) < math.pi / 3]) > 12: 
-            thresh += 30
-            lines = cv.HoughLines(edges, rho_res, theta_res, thresh)
+        lines, edges = get_lines_sideview(frame)
         print("Found", len(lines), "lines")
         img = Image.fromarray(frame)
         draw = ImageDraw.Draw(img)
