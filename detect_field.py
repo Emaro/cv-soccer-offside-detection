@@ -4,7 +4,7 @@ import time
 import cv2 as cv
 import numpy as np
 from PIL import Image, ImageDraw
-#from sympy import Line, Point
+from sympy import Line, Point
 
 
 threshold = 1.5
@@ -323,6 +323,19 @@ def get_lines_sideview(frame, maxLineCount = 12):
             if (append) : lines.append(line);
 
     return lines
+
+def get_vanishing_point(frame):
+    lines = get_lines_sideview(frame);
+    point_int = get_all_intersections(lines);
+
+    point_sum = np.zeros(2);
+    point_cnt = 0;
+    for point in point_int:
+        if (point[0] > 0) : continue; # Skip vanishing points below x = 0
+        point_sum += point;
+        point_cnt += 1;
+
+    return point_sum / point_cnt;
 
 def main():
     vid_file = cv.VideoCapture('video.mp4')

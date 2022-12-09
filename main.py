@@ -1,9 +1,8 @@
 import cv2
-import os
 import numpy as np
 
 from detect_yolo import YOLOModel
-from detect_field import get_lines_sideview
+from detect_field import get_vanishing_point
 
 ###
 ### PARAMETERS
@@ -13,107 +12,67 @@ video_path              = "./video.mp4";   # File to read
 yolo_path               = "ultralytics/yolov5";
 player_model            = "models/best_small.pt";
 
-num_player              = 20;                   # Number of players to track, default: 20
-
-dist_max_player         = 1E+10;                # Max displacement of player between frames
+dist_max_player         = 3E+1;                 # Max displacement of player between frames
 dist_max_ball           = 1E+1;                 # Max distance between player and the ball (possession)
 acceleration_threshold  = 1E+1;                 # Threshold to detect interference
 
 line_compute_freq       = 10;                   # Do line tracking every ~ frames
 
-###
-### GET TRACKED COORDINATES
-### these functions should get positions/lines from what you implemented
-###
-
-def get_lines(frame):
-
-    rho_list = np.empty(4);
-    theta_list = np.empty(4);
-
-    return rho_list, theta_list;
-
-# compute vanishing point here
-# (I think there should be only one relevant vanishing point)
-# (used for getting distances from player coordinates)
-def get_vanishing_point(rho_list, theta_list):
-
-    point = np.zeros(2);
-    return point;
+TEAM_BALL   = 0;
+TEAM_FIRST  = 1;
+TEAM_SECOND = 2;
 
 ###
-### BALL CLASS
-### stores, updates ball position, velocity, acceleration
-###
-
-class Ball:
-    def __init__(self, frame):
-        self.pos = get_pos_ball(frame);
-        self.vel = np.zeros(2);
-        self.acc = np.zeros(2);
-
-    def update(self, frame):
-        pos = get_pos_ball(frame);
-
-        new_vel  = pos - self.pos;
-        self.acc = new_vel - self.vel;        
-        self.vel = new_vel;
-        self.pos = pos;
-
-    def is_played(self):
-        return np.linalg.norm(self.acc) > acceleration_threshold;
-
-###
-### PLAYERS CLASS
+### Yolo CLASS
 ### handles players' positions + line information
 ###
 
-class Players:
+class Yolo:
     def __init__(self, frame):
         # initialize player yolo
         self.model = YOLOModel(yolo_path, player_model);
 
-        # set player positions
-        self.pos = self.model.track_player_yolo(frame);
+        # initialize player and ball positions
+        tracked = self.model.track_yolo(frame);
 
-        # fill pos if less than num_players detected.
-        # count players and assign team with less players
-        while (len(self.pos) < num_player) :
-            team_0 = 0;
-            team_1 = 0;
-            for i in range(len(self.pos)) :
-                if (self.pos[i, 2] == 0) : team_0 += 1;
-                else : team_1 += 1;
+        bidx = -1;
+        self.bpos = np.zeros(2);
+        self.bvel = np.zeros(2);
+        self.bacc = np.zeros(2);
+        for i in range(len(tracked)):
+            if (tracked[i, 2] == TEAM_BALL):
+                self.bpos = tracked[i, 0:1];
+                bidx = -1;
 
-            new_team = 0 if team_0 < team_1 else 1;
-            self.pos = np.append(self.pos, 
-                                 np.array([[frame.shape[0] / 2, frame.shape[1] / 2, new_team]]));
+        if (bidx == -1) : raise ValueError;
 
-        # set vanishing point info and horizontal line
-        self.vpo = np.zeros(2);
+        self.pos = tracked[:bidx, :];
+        self.pos = np.concatenate((self.pos, tracked[bidx + 1:, :]));
 
-        self.left  = np.array([frame.shape[0] / 2, 0]);
-        self.right = np.array([frame.shape[0] / 2, frame.shape[1]]);
+        self.pos_prev = self.pos.copy();
 
-        self.update_line(frame);
-
+        self.pidx = self.get_closest(self.bpos);
+        
         # set dist from goal
-        self.dist = np.zeros(num_player);
-        self.update_dist();
+        self.dist = np.zeros(len(self.pos));
 
         # distance, player snapshot for detection
         self.dist_prev = self.dist.copy();
-        self.idx_prev = -1;
+        self.pidx_prev = -1;
 
         return;
 
-    # Update player positions from new tracked coordinates
+    # Update ball + player positions from new tracked coordinates
     # Assumes pos has num_player(20) rows
     # Chooses nearest point
-    def update_players(self, frame):
-        tracked = self.model.track_player_yolo(frame);
+    def update(self, frame):
+        offside = False;
 
-        for i in range(num_player):
+        # do track
+        tracked = self.model.track_yolo(frame);
+
+        # update players on pos list
+        for i in range(len(self.pos)):
             dist_min = dist_max_player;
             for j in range(len(tracked)):
                 if (tracked[j, 2] == self.pos[i, 2]):
@@ -121,31 +80,50 @@ class Players:
                     if (dist_cur < dist_min):
                         self.pos[i, 0:2] = tracked[j, 0:2];
                         tracked[j, 2] = -1; # set team to -1 to prevent duplicates
+        
+        # add new players and update ball
+        found_ball = False;
+        bpos = np.zeros(2);
+        for i in range(len(tracked)):
+            if (tracked[i, 2] == TEAM_BALL):
+                bpos = tracked[i, 0:2];
+                found_ball = True;
 
+            if (tracked[i, 2] != -1):
+                self.pos = np.append(self.pos, tracked[i]);
+
+        if (found_ball):
+            pidx_new = self.get_closest(bpos);
+            if (self.pidx != pidx_new):
+                self.pidx_prev = self.pidx;
+                self.pidx = pidx_new;
+                self.passed = self.same_team();
+
+        elif (self.pidx != -1):
+            bpos = tracked[self.pidx, 0:2];
+            
+        new_vel   = bpos - self.bpos;
+        self.bacc = new_vel - self.bvel;        
+        self.bvel = new_vel;
+        self.bpos = bpos;
+                
         return;
 
-    # Update line and vanishing point informations
-    # Can only be done once every few frames to save time ?
-    # Also set left and right: horizontal lines
-    def update_line(self, frame):
-        rho_list, theta_list = get_lines(frame);
-        self.vpo = get_vanishing_point(rho_list, theta_list);
-
     # Transform player coordinates to relevant distances
-    def update_dist(self):
+    def update_dist(self, vpo):
         
-        for i in range(num_player):
-            self.dist[i] = self.pos[0] - (self.vpo[0] - self.pos[0]) * self.pos[1] / (self.vpo[1] - self.pos[1]);
+        for i in range(len(self.pos)):
+            self.dist[i] = self.pos[0] - (vpo[0] - self.pos[i][0]) * self.pos[i][1] / (vpo[1] - self.pos[i][1]);
 
         return;
 
     # return index of the closest player to the ball
-    def get_closest(self, ball):
+    def get_closest(self, bpos):
         dist_min = dist_max_ball;
         idx = -1;
         
-        for i in range(num_player):
-            dist_cur = np.linalg.norm(self.pos[i, 0:1] - ball.pos);
+        for i in range(len(self.pos)):
+            dist_cur = np.linalg.norm(self.pos[i, 0:2] - bpos);
             if (dist_cur < dist_min):
                 idx = i;
                 dist_min = dist_cur;
@@ -153,8 +131,8 @@ class Players:
         return idx;
 
     # return if idx_prev and idx point to players of the same team
-    def same_team(self, idx):
-        return self.pos[self.idx_prev, 2] == self.pos[idx, 2];
+    def same_team(self):
+        return self.pos[self.pidx_prev, 2] == self.pos[self.pidx, 2];
 
     # return if idx points to a player that was offside at the snapshot
     def was_offside(self, idx):
@@ -163,7 +141,23 @@ class Players:
         ##################################### TODO
         #####################################
 
-        return False;
+        team_idx = TEAM_FIRST if self.pos_prev[idx, 2] == TEAM_SECOND else TEAM_SECOND;
+        
+        defender_y = 1E+10;
+
+        for i in range(len(self.pos_prev)):
+            if (self.pos_prev[i, 2] != team_idx) : continue;
+            if (self.pos_prev[i, 1] < defender_y) :
+                defender_y = self.pos_prev[i, 1];
+
+        return self.pos_prev[idx, 1] < defender_y;
+
+    def ball_played(self):
+        return self.bacc > acceleration_threshold;
+
+    def store_pos(self):
+        self.pos_prev = self.pos;
+        return;
 
 ###
 ### MAIN FUNCTION
@@ -176,8 +170,7 @@ def main():
     # Initialize
     read_success, frame = video_file.read();
 
-    #ball = Ball(frame);
-    #players = Players(frame);
+    tracker = Yolo(frame);
 
     read_success, frame = video_file.read();
     
@@ -186,19 +179,18 @@ def main():
     while (read_success) :
         frame_count += 1;
 
-        print(get_lines_sideview(frame));
         # Update positions
+        tracker.update(frame);
 
-        ## If somebody touches the ball
-        #if (ball.is_played()) :
-        #    player_idx = players.get_closest(ball);
+        # If somebody touches the ball
+        if (tracker.ball_played()) :
+            # player idx changed between same team: pass is completed
+            if (tracker.passed and
+                tracker.was_offside()):
 
-        #    # player idx changed between same team: pass is completed
-        #    if ((player_idx != players.idx_prev) 
-        #        and (players.same_team(player_idx))
-        #        and (players.was_offside(player_idx))) :
+                print("Offside detected at frame " + frame_count + "\n");
 
-        #        print("Offside detected at frame " + frame_count + "\n");
+            tracker.store_pos();
 
         read_success, frame = video_file.read();
 
