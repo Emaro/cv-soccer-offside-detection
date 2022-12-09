@@ -312,7 +312,7 @@ def get_lines_sideview(frame, maxLineCount = 12):
         thresh += 30
         lines = cv.HoughLines(edges, rho_res, theta_res, thresh)
 
-    return [l for l in lines if abs(l[0][1]) < math.pi / 3]
+    return [l[0] for l in lines if abs(l[0][1]) < math.pi / 3]
 
 def main():
     vid_file = cv.VideoCapture('vid.mp4')
@@ -329,7 +329,7 @@ def main():
         print("Time for frame", no, ":", time_since(s))
 
         for i in range(len(lines)):
-            rho, theta = lines[i][0]
+            rho, theta = lines[i]
             if abs(theta) > math.pi / 3: continue
             a = np.cos(theta)
             b = np.sin(theta)
