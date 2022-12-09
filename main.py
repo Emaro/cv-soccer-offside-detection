@@ -1,8 +1,7 @@
 import cv2
 import os
 import numpy as np
-from detect_player import PlayerModel
-from detect_ball import ball_pos
+from detect_player import YOLOModel
 
 ###
 ### PARAMETERS
@@ -24,14 +23,6 @@ line_compute_freq       = 10;                   # Do line tracking every ~ frame
 ### GET TRACKED COORDINATES
 ### these functions should get positions/lines from what you implemented
 ###
-
-def get_pos_ball(frame):
-
-    pos = np.zeros(2);
-    
-    pos = detect_ball.ball_pos
-
-    return pos;
 
 def get_lines(frame):
 
