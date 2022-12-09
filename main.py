@@ -178,6 +178,7 @@ def main():
     players = Players(frame);
 
     read_success, frame = video_file.read();
+    
     frame_count = 0;
     # Detection loop
     while (read_success) :

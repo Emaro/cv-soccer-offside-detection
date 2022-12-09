@@ -1,4 +1,3 @@
-import heapq
 import math
 import time
 
@@ -9,10 +8,11 @@ from sympy import Line, Point
 
 
 threshold = 1.5
-rhoRes = 2
-thetaRes = math.pi/180
+rho_res = 2
+theta_res = math.pi/180
 resizeWidth = 840
-
+line_scale = 1000
+hough_lines_threshold = 250
 
 def time_since(s):
     ''' 
@@ -22,28 +22,35 @@ def time_since(s):
 
 
 def save(img, name):
-    Image.fromarray(np.uint8(img*255)).save(f'{name}.png')
+    Image.fromarray(np.uint8(img)).save(f'{name}.png')
+
     
+def get_line(rho, theta):
+    a = np.cos(theta)
+    b = np.sin(theta)
+    x0 = a*rho
+    y0 = b*rho
+    x1 = int(x0 + line_scale*(-b))
+    y1 = int(y0 + line_scale*(a))
+    x2 = int(x0 - line_scale*(-b))
+    y2 = int(y0 - line_scale*(a))
+    return Line(Point(x1, y1), Point(x2, y2))
+
 
 def find_intersections(line, k, lines):
-    found = []
+    corners = []
 
     for i in range(len(lines)):
-        if i != k:
-            rho, theta = lines[i][0]
-            a = np.cos(theta)
-            b = np.sin(theta)
-            x0 = a*rho
-            y0 = b*rho
-            x1 = int(x0 + 1000*(-b))
-            y1 = int(y0 + 1000*(a))
-            x2 = int(x0 - 1000*(-b))
-            y2 = int(y0 - 1000*(a))
-            corners = Line(Point(x1, y1), Point(x2, y2)).intersection(line)
-            for c in corners:
-                found.append(c.coordinates)
+        if i == k:
+            continue
+        
+        rho, theta = lines[i][0]
+        intersections = get_line(rho, theta).intersection(line)
+        
+        for intersection in intersections:
+            corners.append(intersection.coordinates)
 
-    return found
+    return corners
 
 
 def detect_field(path, saveImg=False):
@@ -58,20 +65,20 @@ def detect_field(path, saveImg=False):
 
     img = img.convert("L")
     # Normalize and suppress dark regions
-    igs = np.array(img) / 255.
-    igs = np.maximum(igs, 0.5)
+    igs = np.array(img)
+    # igs = np.maximum(igs, 0.5)
 
     if saveImg:
         save(igs, "01-grayscale")
 
     s = time.time()
-    Im = cv.Canny(np.uint8(igs*255), 100, 200, apertureSize=3) / 255.
+    Im = cv.Canny(np.uint8(igs), 100, 200, apertureSize=3)
     if saveImg:
         save(Im, "02-edges")
     print("Edges took", time_since(s))
 
     s = time.time()
-    lines = cv.HoughLines(np.uint8(Im*255), rhoRes, thetaRes, int(threshold*255))
+    lines = cv.HoughLines(np.uint8(Im), rho_res, theta_res, int(threshold*255))
     print("CV hough lines took", time_since(s))
 
     draw = ImageDraw.Draw(img)
@@ -90,7 +97,6 @@ def detect_field(path, saveImg=False):
         y1 = int(y0 + 1000*(a))
         x2 = int(x0 - 1000*(-b))
         y2 = int(y0 - 1000*(a))
-        # x1,y1,x2,y2 = line[0]
         draw.line(((x1, y1), (x2, y2)), fill="white")
         myCorners = myCorners + find_intersections(
             Line(Point(x1, y1), Point(x2, y2)), i, lines)
@@ -134,7 +140,6 @@ def detect_field(path, saveImg=False):
 
     if saveImg:
         Image.fromarray(np.uint8(img)).save(f'04-img-with-hough-lines.png')
-
 
     return colImg, (tl, tr, bl, br), scale
 
@@ -228,12 +233,133 @@ def transform_image(igs, corners):
     return igs_rec, H
 
 
+def get_field_transform(frame, w, h):
+    '''
+    Detects the boundaries of the soccier field in the frame and returns a transformation matrix.
+    '''
+    
+    # From here on we assume the image is in grayscale and already resized.
+    
+    edges = cv.Canny(np.uint8(frame), 100, 200, apertureSize=3)
+    lines = cv.HoughLines(np.uint8(edges), rho_res, theta_res, hough_lines_threshold)
+    intersections = get_all_intersections(lines)
+    corners = get_corners(intersections, w, h)
+    
+    c_in = np.array([
+        [25, 25],
+        [1025, 25],
+        [25, 525],
+        [1025, 525]
+    ])
+    c_ref = np.int32(np.array(corners))
+    
+    H = compute_h(c_in, c_ref)
+    
+    return H
+    
+
+def get_all_intersections(lines):
+    corners = []
+    for i in range(len(lines)):
+        rho, theta = lines[i][0]
+        line = get_line(rho, theta)
+        corners = corners + find_intersections(line, i, lines)
+    return corners
+
+
+def get_corners(intersections, w, h):
+    tl = (-1, -1)
+    tr = (-1, -1)
+    bl = (-1, -1)
+    br = (-1, -1)
+
+    def closerToCenter(first, second):
+        x1, y1 = first
+        x2, y2 = second
+
+        mx, my = resizeWidth/2, h*resizeWidth/w/2
+        d1 = (mx - x1)**2 + (my - y1)**2
+        d2 = (mx - x2)**2 + (my - y2)**2
+
+        # It should not be in the middle
+        middle = (mx - resizeWidth/2)**2 + (my - h*resizeWidth/w)**2
+        if (d2 < middle):
+            return first
+        return first if d1 < d2 else second
+
+    for i in range(len(intersections)):
+        x, y = intersections[i]
+        if 0 < x < resizeWidth/2 and 0 < y < h*resizeWidth/w/2:
+            tl = closerToCenter(tl, (x, y))
+        elif resizeWidth/2 < x < resizeWidth and 0 < y < h*resizeWidth/w/2:
+            tr = closerToCenter(tr, (x, y))
+        elif 0 < x < resizeWidth/2 and h*resizeWidth/w/2 < y < h*resizeWidth/w:
+            bl = closerToCenter(bl, (x, y))
+        elif resizeWidth/2 < x < resizeWidth and h*resizeWidth/w/2 < y < h*resizeWidth/w:
+            br = closerToCenter(br, (x, y))
+    
+    return (tl, tr, bl, br)
+
+
+def get_lines_sideview(frame, maxLineCount = 12):
+    gauss = np.maximum(np.array(frame), 140)
+    gauss = cv.GaussianBlur(gauss, (3,3), 1.2)
+    edges = cv.Canny(gauss, 180, 120, apertureSize=5)
+    # edges = cv.GaussianBlur(edges, (3, 3), 0)
+    lines = None
+    thresh = 220
+    while lines is None or len([l for l in lines if abs(l[0][1]) < math.pi / 3]) > maxLineCount: 
+        thresh += 30
+        lines = cv.HoughLines(edges, rho_res, theta_res, thresh)
+
+    return [l for l in lines if abs(l[0][1]) < math.pi / 3]
+
 def main():
+    vid_file = cv.VideoCapture('vid.mp4')
+    r, frame = vid_file.read()
+    no = 0
+    while r:
+        no += 1
+        s = time.time()
+        gauss = np.maximum(np.array(frame), 140)
+        gauss = cv.GaussianBlur(gauss, (3,3), 1.2)
+        edges = cv.Canny(gauss, 180, 120, apertureSize=5)
+        # edges = cv.GaussianBlur(edges, (3, 3), 0)
+        lines = None
+        thresh = 220
+        while lines is None or len([l for l in lines if abs(l[0][1]) < math.pi / 3]) > 12: 
+            thresh += 30
+            lines = cv.HoughLines(edges, rho_res, theta_res, thresh)
+        print("Found", len(lines), "lines")
+        img = Image.fromarray(frame)
+        draw = ImageDraw.Draw(img)
+
+        print("Time for frame", no, ":", time_since(s))
+
+        for i in range(len(lines)):
+            rho, theta = lines[i][0]
+            if abs(theta) > math.pi / 3: continue
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a*rho
+            y0 = b*rho
+            x1 = int(x0 + 1000*(-b))
+            y1 = int(y0 + 1000*(a))
+            x2 = int(x0 - 1000*(-b))
+            y2 = int(y0 - 1000*(a))
+            draw.line(((x1, y1), (x2, y2)), fill="white")
+        
+        save(edges, f'res/{no}-edges')
+        save(img, f'res/{no}-frame')
+        vid_file.set(cv.CAP_PROP_POS_FRAMES, no * 50)
+        r, frame = vid_file.read()
+        
+    
     s = time.time()
     igs, corners, scale = detect_field('static.png', True)
     print("Total time to find corners", time_since(s))
     s = time.time()
-    img, H = transform_image(igs, corners)
+    # img, H = transform_image(igs, corners)
     print("Total time to transform image", time_since(s))
 
 
