@@ -1,15 +1,17 @@
 import cv2
 import os
 import numpy as np
-from detect_player import YOLOModel
+
+from detect_yolo import YOLOModel
+from detect_field import get_lines_sideview
 
 ###
 ### PARAMETERS
 ###
 
-video_path              = "./data/video.mp4";   # File to read
+video_path              = "./video.mp4";   # File to read
 yolo_path               = "ultralytics/yolov5";
-player_model            = "best_player.pt";
+player_model            = "models/best_small.pt";
 
 num_player              = 20;                   # Number of players to track, default: 20
 
@@ -69,7 +71,7 @@ class Ball:
 class Players:
     def __init__(self, frame):
         # initialize player yolo
-        self.model = PlayerModel(yolo_path, player_model);
+        self.model = YOLOModel(yolo_path, player_model);
 
         # set player positions
         self.pos = self.model.track_player_yolo(frame);
@@ -174,8 +176,8 @@ def main():
     # Initialize
     read_success, frame = video_file.read();
 
-    ball = Ball(frame);
-    players = Players(frame);
+    #ball = Ball(frame);
+    #players = Players(frame);
 
     read_success, frame = video_file.read();
     
@@ -184,25 +186,19 @@ def main():
     while (read_success) :
         frame_count += 1;
 
+        print(get_lines_sideview(frame));
         # Update positions
-        ball.update();
-        players.update_players();
 
-        if (frame_count % line_compute_freq == 0) :
-            players.update_line();
+        ## If somebody touches the ball
+        #if (ball.is_played()) :
+        #    player_idx = players.get_closest(ball);
 
-        players.update_dist();
+        #    # player idx changed between same team: pass is completed
+        #    if ((player_idx != players.idx_prev) 
+        #        and (players.same_team(player_idx))
+        #        and (players.was_offside(player_idx))) :
 
-        # If somebody touches the ball
-        if (ball.is_played()) :
-            player_idx = players.get_closest(ball);
-
-            # player idx changed between same team: pass is completed
-            if ((player_idx != players.idx_prev) 
-                and (players.same_team(player_idx))
-                and (players.was_offside(player_idx))) :
-
-                print("Offside detected at frame " + frame_count + "\n");
+        #        print("Offside detected at frame " + frame_count + "\n");
 
         read_success, frame = video_file.read();
 

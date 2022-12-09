@@ -4,7 +4,7 @@ import time
 import cv2 as cv
 import numpy as np
 from PIL import Image, ImageDraw
-from sympy import Line, Point
+#from sympy import Line, Point
 
 
 threshold = 1.5
@@ -305,17 +305,27 @@ def get_lines_sideview(frame, maxLineCount = 12):
     gauss = np.maximum(np.array(frame), 140)
     gauss = cv.GaussianBlur(gauss, (3,3), 1.2)
     edges = cv.Canny(gauss, 180, 120, apertureSize=5)
-    # edges = cv.GaussianBlur(edges, (3, 3), 0)
-    lines = None
+    lines = [[0, 0]] * (maxLineCount + 1)
     thresh = 220
-    while lines is None or len([l for l in lines if abs(l[0][1]) < math.pi / 3]) > maxLineCount: 
+    while len(lines) > maxLineCount: 
         thresh += 30
-        lines = cv.HoughLines(edges, rho_res, theta_res, thresh)
+        lines_t = cv.HoughLines(edges, rho_res, theta_res, thresh)
+        lines_t = [l[0] for l in lines_t if abs(l[0][1]) < math.pi / 3]
+        lines = [];
+        if (lines_t == None) : return lines;
+        for line in lines_t:
+            append = True;
+            for line_comp in lines:
+                if (abs(line[0] - line_comp[0]) < rho_res * 10 and
+                    abs(line[1] - line_comp[1]) < theta_res * 5) :
+                    append = False;
+                    break;
+            if (append) : lines.append(line);
 
-    return [l[0] for l in lines if abs(l[0][1]) < math.pi / 3]
+    return lines
 
 def main():
-    vid_file = cv.VideoCapture('vid.mp4')
+    vid_file = cv.VideoCapture('video.mp4')
     r, frame = vid_file.read()
     no = 0
     while r:
@@ -328,6 +338,7 @@ def main():
 
         print("Time for frame", no, ":", time_since(s))
 
+        print(lines);
         for i in range(len(lines)):
             rho, theta = lines[i]
             if abs(theta) > math.pi / 3: continue
@@ -347,12 +358,12 @@ def main():
         r, frame = vid_file.read()
         
     
-    s = time.time()
-    igs, corners, scale = detect_field('static.png', True)
-    print("Total time to find corners", time_since(s))
-    s = time.time()
-    # img, H = transform_image(igs, corners)
-    print("Total time to transform image", time_since(s))
+    #s = time.time()
+    #igs, corners, scale = detect_field('static.png', True)
+    #print("Total time to find corners", time_since(s))
+    #s = time.time()
+    ## img, H = transform_image(igs, corners)
+    #print("Total time to transform image", time_since(s))
 
 
 if __name__ == '__main__':

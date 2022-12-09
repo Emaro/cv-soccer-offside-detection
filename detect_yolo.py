@@ -1,11 +1,11 @@
 import torch
 import numpy as np
 
-class PlayerModel:
+class YOLOModel:
 	def __init__(self, yolo_path, model_path):
 		self.model = torch.hub.load(yolo_path, 'custom', path = model_path, force_reload=True)
 
-	def track_player_yolo(self, img):
+	def track_yolo(self, img):
 		results = self.model(img)  # includes NMS
 
 		# For Debugging
