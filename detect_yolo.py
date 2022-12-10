@@ -14,7 +14,7 @@ class YOLOModel:
 
 		# Data
 		player_pos_full = results.pandas().xyxy[0]
-		print(player_pos_full)
+		#print(player_pos_full)
 		player_pos_full = player_pos_full.to_numpy()
 
 		num_player = player_pos_full.shape[0]
@@ -39,7 +39,7 @@ class YOLOModel:
 		player_pos = player_pos[::-1]
 		#print(player_pos)
 
-		return player_pos
+		return player_pos[:, 0:3]
 
 
 

@@ -8,9 +8,9 @@ from detect_field import get_vanishing_point
 ### PARAMETERS
 ###
 
-video_path              = "./video.mp4";   # File to read
-yolo_path               = "ultralytics/yolov5";
-player_model            = "models/best_small.pt";
+video_path              = "/home/djlee/Downloads/video.mp4";   # File to read
+yolo_path               = "ultralytics/yolov5"
+player_model            = "models/best_small.pt"
 
 dist_max_player         = 3E+1;                 # Max displacement of player between frames
 dist_max_ball           = 1E+1;                 # Max distance between player and the ball (possession)
@@ -18,9 +18,9 @@ acceleration_threshold  = 1E+1;                 # Threshold to detect interferen
 
 line_compute_freq       = 1;                   # Do line tracking every ~ frames
 
-TEAM_BALL   = 0;
-TEAM_FIRST  = 1;
-TEAM_SECOND = 2;
+TEAM_BALL   = 0
+TEAM_FIRST  = 1
+TEAM_SECOND = 2
 
 ###
 ### Yolo CLASS
@@ -34,20 +34,21 @@ class Yolo:
 
         # initialize player and ball positions
         tracked = self.model.track_yolo(frame);
-
+        
         bidx = -1;
         self.bpos = np.zeros(2);
         self.bvel = np.zeros(2);
         self.bacc = np.zeros(2);
         for i in range(len(tracked)):
             if (tracked[i, 2] == TEAM_BALL):
-                self.bpos = tracked[i, 0:1];
-                bidx = -1;
+                self.bpos = tracked[i, 0:2];
+                bidx = i;
 
-        if (bidx == -1) : raise ValueError;
-
-        self.pos = tracked[:bidx, :];
-        self.pos = np.concatenate((self.pos, tracked[bidx + 1:, :]));
+        if (bidx == -1) : 
+            self.pos = tracked;
+        else:
+            self.pos = tracked[:bidx, :];
+            self.pos = np.concatenate((self.pos, tracked[bidx + 1:, :]));
 
         self.pidx = self.get_closest(self.bpos);
         
@@ -57,6 +58,8 @@ class Yolo:
         # distance, player snapshot for detection
         self.dist_prev = self.dist.copy();
         self.pidx_prev = -1;
+
+        self.passed = False;
 
         return;
 
@@ -83,11 +86,13 @@ class Yolo:
         bpos = np.zeros(2);
         for i in range(len(tracked)):
             if (tracked[i, 2] == TEAM_BALL):
+                tracked[i, 2] = -1
                 bpos = tracked[i, 0:2];
                 found_ball = True;
 
             if (tracked[i, 2] != -1):
-                self.pos = np.append(self.pos, tracked[i]);
+                self.pos = np.append(self.pos, tracked[i,:].reshape(1,3), axis=0);
+                self.dist = np.append(self.dist, 0);
 
         if (found_ball):
             pidx_new = self.get_closest(bpos);
@@ -97,20 +102,22 @@ class Yolo:
                 self.passed = self.same_team();
 
         elif (self.pidx != -1):
-            bpos = tracked[self.pidx, 0:2];
+            print(self.pidx)
+            bpos = self.pos[self.pidx, 0:2];
             
         new_vel   = bpos - self.bpos;
         self.bacc = new_vel - self.bvel;        
         self.bvel = new_vel;
         self.bpos = bpos;
-                
+        
         return;
 
     # Transform player coordinates to relevant distances
     def update_dist(self, vpo):
         
         for i in range(len(self.pos)):
-            self.dist[i] = self.pos[0] - (vpo[0] - self.pos[i][0]) * self.pos[i][1] / (vpo[1] - self.pos[i][1]);
+            #print(self.pos)
+            self.dist[i] = vpo[0] - (vpo[0] - self.pos[i][0]) * vpo[1] / (vpo[1] - self.pos[i][1]);
 
         return;
 
@@ -150,7 +157,7 @@ class Yolo:
         return self.dist_prev[idx] < defender_y;
 
     def ball_played(self):
-        return self.bacc > acceleration_threshold;
+        return np.linalg.norm(self.bacc) > acceleration_threshold;
 
     def store_dist(self):
         self.dist_prev = self.dist;
@@ -182,7 +189,7 @@ def main():
             vpo_t = get_vanishing_point(frame);
             if (vpo_t is not None) : vpo = vpo_t;
 
-        print(vpo);
+        #print(vpo);
 
         # Update positions
         tracker.update(frame);
