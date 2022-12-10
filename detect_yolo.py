@@ -26,10 +26,18 @@ class YOLOModel:
 			x2 = player_pos_full[i,2]
 			y1 = player_pos_full[i,1]
 			y2 = player_pos_full[i,3]
-			which_team = player_pos_full[i,5] # 0 for white team, 1 for blue team
 			confidence = player_pos_full[i,4]
 			x = (x1+x2)/2
 			y = (y1+y2)/2
+
+			#which_team = player_pos_full[i,5] # 0 for white team, 1 for blue team
+			if (player_pos_full[i, 5] == 0) : which_team = 0;
+			else :
+				x_idx = np.floor(x).astype(np.int);
+				y_idx = np.floor(y).astype(np.int);
+				color_sum = np.sum(img[y_idx - 1 : y_idx + 2, x_idx - 1 : x_idx + 2, :]);
+				which_team = 1 if color_sum > 3000 else 2;
+
 			player_pos[i,0] = x
 			player_pos[i,1] = y
 			player_pos[i,2] = which_team
