@@ -10,12 +10,13 @@ from detect_field import get_vanishing_point
 
 #/home/djlee/Downloads/video.mp4
 
-video_path              = "/home/djlee/yolov5/engcro/videos/offside.mp4";   # File to read
+video_path              = "./video.mp4";        # File to read
+out_path                = "./video_out.mp4";    # Output File
 yolo_path               = "ultralytics/yolov5"
-player_model            = "models/best_small.pt"
+player_model            = "./models/best_small.pt"
 
-dist_max_player         = 100E+1;                 # Max displacement of player between frames
-dist_max_ball           = 100E+1;                 # Max distance between player and the ball (possession)
+dist_max_player         = 1E+2;                 # Max displacement of player between frames
+dist_max_ball           = 2E+1;                 # Max distance between player and the ball (possession)
 acceleration_threshold  = 1E+1;                 # Threshold to detect interference
 
 line_compute_freq       = 1;                   # Do line tracking every ~ frames
@@ -35,7 +36,8 @@ class Yolo:
         self.model = YOLOModel(yolo_path, player_model);
 
         # initialize player and ball positions
-        tracked = self.model.track_yolo(frame);
+        self.tracked = self.model.track_yolo(frame);
+        tracked = self.tracked.copy()
         
         bidx = -1;
         self.bpos = np.zeros(2);
@@ -71,7 +73,8 @@ class Yolo:
     def update(self, frame):
 
         # do track
-        tracked = self.model.track_yolo(frame);
+        self.tracked = self.model.track_yolo(frame);
+        tracked = self.tracked.copy()
         
         # update players on pos list
         for i in range(len(self.pos)):
@@ -100,7 +103,7 @@ class Yolo:
 
         if (found_ball):
             pidx_new = self.get_closest(bpos);
-            if (self.pidx != pidx_new):
+            if (self.pidx != pidx_new and pidx_new != -1):
                 self.pidx_prev = self.pidx;
                 self.pidx = pidx_new;
                 self.passed = self.same_team();
@@ -147,10 +150,6 @@ class Yolo:
     # return if idx points to a player that was offside at the snapshot
     def was_offside(self, idx):
 
-        #####################################
-        ##################################### TODO
-        #####################################
-
         team_idx = TEAM_FIRST if self.pos[idx, 2] == TEAM_SECOND else TEAM_SECOND;
         
         defender_y = 1E+10;
@@ -170,18 +169,17 @@ class Yolo:
         return;
 
     def draw_result(self, frame):
-        #tracked = self.model.track_yolo(frame)
         result_frame = cv2.circle(frame, (int(self.bpos[0]),int(self.bpos[1])), radius=20, color=(0,0,255), thickness=-1)
 
-        for i in range(len(self.pos)):
-            if self.pos[i,2] == TEAM_FIRST:
-                result_frame = cv2.circle(result_frame, (int(self.pos[i,0]),int(self.pos[i,1])), radius=20, color=(255,255,255), thickness=-1)
+        for i in range(len(self.tracked)):
+            if self.tracked[i,2] == TEAM_FIRST:
+                result_frame = cv2.circle(result_frame, (int(self.tracked[i,0]),int(self.tracked[i,1])), radius=20, color=(255,255,255), thickness=-1)
 
-            if self.pos[i,2] == TEAM_SECOND:
-                result_frame = cv2.circle(result_frame, (int(self.pos[i,0]),int(self.pos[i,1])), radius=20, color=(0,0,0), thickness=-1)
+            if self.tracked[i,2] == TEAM_SECOND:
+                result_frame = cv2.circle(result_frame, (int(self.tracked[i,0]),int(self.tracked[i,1])), radius=20, color=(0,0,0), thickness=-1)
 
-        cv2.imshow('Color',result_frame)
-        cv2.waitKey(5)
+        # cv2.imshow('Color',result_frame)
+        # cv2.waitKey(5)
         
 
 ###
@@ -200,7 +198,12 @@ def main():
 
     read_success, frame = video_file.read();
     
+    # Output
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX');
+    video_out = cv2.VideoWriter(out_path, fourcc, 24.0, (frame.shape[1], frame.shape[0]));
+
     frame_count = 0;
+    write_detected = False;
     # Detection loop
     while (read_success) :
         frame_count += 1;
@@ -215,17 +218,25 @@ def main():
         # Update positions
         tracker.update(frame);
         tracker.update_dist(vpo);
-        tracker.draw_result(frame)
+        tracker.draw_result(frame);
+
         # If somebody touches the ball
         if (tracker.ball_played()) :
             # player idx changed between same team: pass is completed
             if (tracker.passed and
                 tracker.was_offside(tracker.pidx_prev)):
 
+                write_detected = True;
                 print("Offside detected at frame " + str(frame_count) + "\n");
 
             tracker.store_dist();
 
+        if (write_detected) :
+                font = cv2.FONT_HERSHEY_DUPLEX
+                img = cv2.putText(frame, "OFFSIDE DETECTED", (230, 300), font, 5, (0,0,255), 30, cv2.LINE_AA)
+
+        cv2.imwrite("frames/" + str(frame_count) + ".png", frame);
+        video_out.write(frame);
         read_success, frame = video_file.read();
 
     return 0;
