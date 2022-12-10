@@ -182,7 +182,7 @@ def main():
             vpo_t = get_vanishing_point(frame);
             if (vpo_t is not None) : vpo = vpo_t;
 
-        #print(vpo);
+        print(vpo);
 
         # Update positions
         tracker.update(frame);
