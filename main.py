@@ -8,12 +8,14 @@ from detect_field import get_vanishing_point
 ### PARAMETERS
 ###
 
-video_path              = "/home/djlee/Downloads/video.mp4";   # File to read
+#/home/djlee/Downloads/video.mp4
+
+video_path              = "/home/djlee/yolov5/engcro/videos/offside.mp4";   # File to read
 yolo_path               = "ultralytics/yolov5"
 player_model            = "models/best_small.pt"
 
-dist_max_player         = 3E+1;                 # Max displacement of player between frames
-dist_max_ball           = 1E+1;                 # Max distance between player and the ball (possession)
+dist_max_player         = 100E+1;                 # Max displacement of player between frames
+dist_max_ball           = 100E+1;                 # Max distance between player and the ball (possession)
 acceleration_threshold  = 1E+1;                 # Threshold to detect interference
 
 line_compute_freq       = 1;                   # Do line tracking every ~ frames
@@ -70,7 +72,7 @@ class Yolo:
 
         # do track
         tracked = self.model.track_yolo(frame);
-
+        
         # update players on pos list
         for i in range(len(self.pos)):
             dist_min = dist_max_player;
@@ -78,9 +80,11 @@ class Yolo:
                 if (tracked[j, 2] == self.pos[i, 2]):
                     dist_cur = np.linalg.norm(self.pos[i, 0:2] - tracked[j, 0:2]);
                     if (dist_cur < dist_min):
-                        self.pos[i, 0:2] = tracked[j, 0:2];
+                        dist_min = dist_cur
+                        self.pos[i, 0] = tracked[j, 0]
+                        self.pos[i, 1] = tracked[j, 1]
                         tracked[j, 2] = -1; # set team to -1 to prevent duplicates
-        
+        #print(self.pos)
         # add new players and update ball
         found_ball = False;
         bpos = np.zeros(2);
@@ -102,14 +106,16 @@ class Yolo:
                 self.passed = self.same_team();
 
         elif (self.pidx != -1):
-            print(self.pidx)
             bpos = self.pos[self.pidx, 0:2];
             
+        #print(self.pos[self.pidx, 0:2], self.pidx)
         new_vel   = bpos - self.bpos;
         self.bacc = new_vel - self.bvel;        
         self.bvel = new_vel;
         self.bpos = bpos;
         
+        #print(self.bpos, self.pos[self.pidx, 2])
+
         return;
 
     # Transform player coordinates to relevant distances
@@ -163,6 +169,21 @@ class Yolo:
         self.dist_prev = self.dist;
         return;
 
+    def draw_result(self, frame):
+        #tracked = self.model.track_yolo(frame)
+        result_frame = cv2.circle(frame, (int(self.bpos[0]),int(self.bpos[1])), radius=20, color=(0,0,255), thickness=-1)
+
+        for i in range(len(self.pos)):
+            if self.pos[i,2] == TEAM_FIRST:
+                result_frame = cv2.circle(result_frame, (int(self.pos[i,0]),int(self.pos[i,1])), radius=20, color=(255,255,255), thickness=-1)
+
+            if self.pos[i,2] == TEAM_SECOND:
+                result_frame = cv2.circle(result_frame, (int(self.pos[i,0]),int(self.pos[i,1])), radius=20, color=(0,0,0), thickness=-1)
+
+        cv2.imshow('Color',result_frame)
+        cv2.waitKey(5)
+        
+
 ###
 ### MAIN FUNCTION
 ###
@@ -194,14 +215,14 @@ def main():
         # Update positions
         tracker.update(frame);
         tracker.update_dist(vpo);
-
+        tracker.draw_result(frame)
         # If somebody touches the ball
         if (tracker.ball_played()) :
             # player idx changed between same team: pass is completed
             if (tracker.passed and
                 tracker.was_offside(tracker.pidx_prev)):
 
-                print("Offside detected at frame " + frame_count + "\n");
+                print("Offside detected at frame " + str(frame_count) + "\n");
 
             tracker.store_dist();
 
