@@ -44,7 +44,7 @@ def find_intersections(line, k, lines):
         if i == k:
             continue
         
-        rho, theta = lines[i][0]
+        rho, theta = lines[i]
         intersections = get_line(rho, theta).intersection(line)
         
         for intersection in intersections:
@@ -261,7 +261,7 @@ def get_field_transform(frame, w, h):
 def get_all_intersections(lines):
     corners = []
     for i in range(len(lines)):
-        rho, theta = lines[i][0]
+        rho, theta = lines[i]
         line = get_line(rho, theta)
         corners = corners + find_intersections(line, i, lines)
     return corners
@@ -331,10 +331,13 @@ def get_vanishing_point(frame):
     point_sum = np.zeros(2);
     point_cnt = 0;
     for point in point_int:
-        if (point[0] > 0) : continue; # Skip vanishing points below x = 0
-        point_sum += point;
+        if (point[1] > 0) : continue; # Skip vanishing points below x = 0
+        if (point[0] > 1E+3) : continue;
+        point_sum[0] += point[0];
+        point_sum[1] += point[1];
         point_cnt += 1;
 
+    if (point_cnt == 0) : return None;
     return point_sum / point_cnt;
 
 def main():

@@ -16,7 +16,7 @@ dist_max_player         = 3E+1;                 # Max displacement of player bet
 dist_max_ball           = 1E+1;                 # Max distance between player and the ball (possession)
 acceleration_threshold  = 1E+1;                 # Threshold to detect interference
 
-line_compute_freq       = 10;                   # Do line tracking every ~ frames
+line_compute_freq       = 1;                   # Do line tracking every ~ frames
 
 TEAM_BALL   = 0;
 TEAM_FIRST  = 1;
@@ -49,8 +49,6 @@ class Yolo:
         self.pos = tracked[:bidx, :];
         self.pos = np.concatenate((self.pos, tracked[bidx + 1:, :]));
 
-        self.pos_prev = self.pos.copy();
-
         self.pidx = self.get_closest(self.bpos);
         
         # set dist from goal
@@ -66,7 +64,6 @@ class Yolo:
     # Assumes pos has num_player(20) rows
     # Chooses nearest point
     def update(self, frame):
-        offside = False;
 
         # do track
         tracked = self.model.track_yolo(frame);
@@ -141,22 +138,22 @@ class Yolo:
         ##################################### TODO
         #####################################
 
-        team_idx = TEAM_FIRST if self.pos_prev[idx, 2] == TEAM_SECOND else TEAM_SECOND;
+        team_idx = TEAM_FIRST if self.pos[idx, 2] == TEAM_SECOND else TEAM_SECOND;
         
         defender_y = 1E+10;
 
-        for i in range(len(self.pos_prev)):
-            if (self.pos_prev[i, 2] != team_idx) : continue;
-            if (self.pos_prev[i, 1] < defender_y) :
-                defender_y = self.pos_prev[i, 1];
+        for i in range(len(self.dist_prev)):
+            if (self.pos[i, 2] != team_idx) : continue;
+            if (self.dist_prev[i] < defender_y) :
+                defender_y = self.dist_prev[i];
 
-        return self.pos_prev[idx, 1] < defender_y;
+        return self.dist_prev[idx] < defender_y;
 
     def ball_played(self):
         return self.bacc > acceleration_threshold;
 
-    def store_pos(self):
-        self.pos_prev = self.pos;
+    def store_dist(self):
+        self.dist_prev = self.dist;
         return;
 
 ###
@@ -171,6 +168,7 @@ def main():
     read_success, frame = video_file.read();
 
     tracker = Yolo(frame);
+    vpo = get_vanishing_point(frame);
 
     read_success, frame = video_file.read();
     
@@ -179,18 +177,26 @@ def main():
     while (read_success) :
         frame_count += 1;
 
+        # Update vanishing point
+        if (frame_count % line_compute_freq == 0) :
+            vpo_t = get_vanishing_point(frame);
+            if (vpo_t is not None) : vpo = vpo_t;
+
+        #print(vpo);
+
         # Update positions
         tracker.update(frame);
+        tracker.update_dist(vpo);
 
         # If somebody touches the ball
         if (tracker.ball_played()) :
             # player idx changed between same team: pass is completed
             if (tracker.passed and
-                tracker.was_offside()):
+                tracker.was_offside(tracker.pidx_prev)):
 
                 print("Offside detected at frame " + frame_count + "\n");
 
-            tracker.store_pos();
+            tracker.store_dist();
 
         read_success, frame = video_file.read();
 
